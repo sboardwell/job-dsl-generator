@@ -1,0 +1,50 @@
+pipeline {
+    options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr:'30'))
+        skipStagesAfterUnstable()
+        timeout(time: 1, unit: 'HOURS')
+    }
+    agent {
+        kubernetes {
+            label 'jenkins-jx-base'
+            defaultContainer 'jx-base'
+        }
+    }
+    stages {
+        stage('Run DSL') {
+            environment {
+                UTIL_SCRIPT_URL = 'https://raw.githubusercontent.com/sboardwell/job-dsl-generator/master/src/JobDslGenUtil.groovy'
+                JENKINS_CREDS = credentials('jenkins-creds')
+                GITHUB_CREDS = credentials('github-creds')
+            }
+            steps {
+                script {
+                    jobDsl(
+                            failOnMissingPlugin: true,
+                            removedConfigFilesAction: 'IGNORE',
+                            removedJobAction: 'IGNORE',
+                            removedViewAction: 'IGNORE',
+                            additionalParameters: [
+                                'UTIL_SCRIPT_URL': "$UTIL_SCRIPT_URL",
+                                'JENKINS_URL': "$JENKINS_URL",
+                                'JENKINS_CREDS': "$JENKINS_CREDS",
+                                'GITHUB_TOKEN': "$GITHUB_CREDS_PSW"
+                            ],
+                            targets: 'examples/seed-project/jobs/**/*.groovy',
+                            unstableOnDeprecation: true
+                    )
+                }
+            }
+        }
+    }
+    post {
+        cleanup {
+            script {
+                if (env.WORKSPACE) {
+                    cleanWs()
+                }
+            }
+        }
+    }
+}

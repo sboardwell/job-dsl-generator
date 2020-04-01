@@ -1,0 +1,35 @@
+pipeline {
+    options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr:'30'))
+        skipStagesAfterUnstable()
+        timeout(time: 1, unit: 'HOURS')
+    }
+    agent none
+    stages {
+        stage('Compile') {
+            steps {
+                echo "Running stage '${STAGE_NAME}'"
+            }
+        }
+        stage('Build') {
+            steps {
+                echo "Running stage '${STAGE_NAME}'"
+            }
+        }
+        stage('Test') {
+            steps {
+                echo "Running stage '${STAGE_NAME}'"
+            }
+        }
+    }
+    post {
+        cleanup {
+            script {
+                if (env.WORKSPACE) {
+                    cleanWs()
+                }
+            }
+        }
+    }
+}

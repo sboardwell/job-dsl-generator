@@ -1,0 +1,41 @@
+pipeline {
+    options {
+        disableConcurrentBuilds()
+        buildDiscarder(logRotator(numToKeepStr:'30'))
+        skipStagesAfterUnstable()
+        timeout(time: 1, unit: 'HOURS')
+    }
+    agent none
+    parameters {
+        string(defaultValue: 'JOB_PATTERN Default', description: 'String param description', name: 'STR_PARAM')
+        choice(choices: 'choiceA\nchoiceB', description: 'Choice description', name: 'CHOICE_PARAM')
+        text(defaultValue: '', description: 'Text param description', name: 'TEXT_PARAM')
+        booleanParam(defaultValue: true, description: 'Boolean param description', name: 'BOOLEAN_PARAM')
+    }
+    stages {
+        stage('Compile') {
+            steps {
+                echo "Running stage '${STAGE_NAME}'"
+            }
+        }
+        stage('Build') {
+            steps {
+                echo "Running stage '${STAGE_NAME}'"
+            }
+        }
+        stage('Test') {
+            steps {
+                echo "Running stage '${STAGE_NAME}'"
+            }
+        }
+    }
+    post {
+        cleanup {
+            script {
+                if (env.WORKSPACE) {
+                    cleanWs()
+                }
+            }
+        }
+    }
+}
