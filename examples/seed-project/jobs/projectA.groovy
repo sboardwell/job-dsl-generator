@@ -14,10 +14,10 @@ def pipelineJson = JobDslGenUtil.getJenkinsfileJsonObject(JENKINS_URL, JENKINS_C
 println "${pipelineJson}"
 
 // create in separate steps
-def job1 = JobDslGenUtil.generateJobBase(this, jobName + 'ex1', org, repo, branch, credentialsId, scriptPath, '', '')
+def job1 = JobDslGenUtil.generateJobBase(this, jobName + '-eg-1', org, repo, branch, credentialsId, scriptPath, '', '')
 JobDslGenUtil.addParameters(job1, pipelineJson, out)
 JobDslGenUtil.addOptions(job1, pipelineJson, out)
 JobDslGenUtil.addTriggers(job1, pipelineJson, out)
 
 // create in one step
-def job2 = JobDslGenUtil.generateJobFull(this, jobName + 'ex2', org, repo, branch, credentialsId, scriptPath, '', '', pipelineJson, out)
+def job2 = JobDslGenUtil.generateJobFull(this, jobName + '-eg-2', org, repo, branch, credentialsId, scriptPath, '', '', pipelineJson, out)

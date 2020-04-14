@@ -1,7 +1,22 @@
+import groovy.util.XmlParser
 import groovy.json.JsonSlurper
 import groovy.json.JsonOutput
 
 class JobDslGenUtil {
+
+    static void main(String[] args) {
+        //println getJenkinsfileFromGitHub('https://raw.githubusercontent.com/sboardwell/job-dsl-generator/latest/examples/seed-project/Jenkinsfile', '')
+    }
+
+    /*
+     * A little holder for the jenkinsfiles taken from github
+     */
+    private static gitHubJenkinsfiles = [:]
+
+    /*
+     * A little holder for the jenkinsfiles JSON object taken from github
+     */
+    private static jenkinsfilesJSONs = [:]
 
     private static printOutput(output, out) {
         output << '-'.multiply(90)
@@ -10,12 +25,27 @@ class JobDslGenUtil {
         }
     }
 
+    static def getUsernamePasswordOrSecretCredential(def credentialsId) {
+        def creds = jenkins.model.Jenkins.instanceOrNull?.getExtensionList('com.cloudbees.plugins.credentials.SystemCredentialsProvider')
+        def ret = []
+        creds.each { provider ->
+            def cred = provider.credentials.findResult { it.id == credentialsId ? it : null }
+            if (cred.class.name == 'com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl')
+                ret = [ cred.password, cred.username ]
+            else if (cred.class.name == 'org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl') {
+                ret = [ cred.secret ]
+            }
+        }
+        return ret
+    }
+
     private static getResponse(url, body, authorization, postContentType) {
         def http = new URL(url).openConnection() as HttpURLConnection
         http.setRequestMethod("POST")
         http.setDoOutput(true)
         http.setRequestProperty("Authorization", authorization)
         http.setRequestProperty("Accept", "application/json")
+        http.setRequestProperty("Cache-Control", "no-store")
         http.setRequestProperty("Content-Type", postContentType)
         http.outputStream.write(body.getBytes("UTF-8"))
         http.connect()
@@ -26,43 +56,98 @@ class JobDslGenUtil {
         }
     }
 
+    static String addParametersUsingDslJobDefinition(job, jenkinsUrl, jenkinsCreds, out) {
+        String jenkinsfileStr = getJenkinsfileFromGitHubUsingDslJobDefinition(job, out)
+        def pipelineJson = getJenkinsfileJsonObjectFromJenkins(jenkinsUrl, jenkinsCreds, jenkinsfileStr, out)
+        addParameters(job, pipelineJson, out)
+    }
+
+    static String addOptionsUsingDslJobDefinition(job, jenkinsUrl, jenkinsCreds, out) {
+        String jenkinsfileStr = getJenkinsfileFromGitHubUsingDslJobDefinition(job, out)
+        def pipelineJson = getJenkinsfileJsonObjectFromJenkins(jenkinsUrl, jenkinsCreds, jenkinsfileStr, out)
+        addOptions(job, pipelineJson, out)
+    }
+
+    static String addTriggersUsingDslJobDefinition(job, jenkinsUrl, jenkinsCreds, out) {
+        String jenkinsfileStr = getJenkinsfileFromGitHubUsingDslJobDefinition(job, out)
+        def pipelineJson = getJenkinsfileJsonObjectFromJenkins(jenkinsUrl, jenkinsCreds, jenkinsfileStr, out)
+        addTriggers(job, pipelineJson, out)
+    }
+
+    static String addExtrasUsingDslJobDefinition(job, jenkinsUrl, jenkinsCreds, out) {
+        String jenkinsfileStr = getJenkinsfileFromGitHubUsingDslJobDefinition(job, out)
+        def pipelineJson = getJenkinsfileJsonObjectFromJenkins(jenkinsUrl, jenkinsCreds, jenkinsfileStr, out)
+        addParameters(job, pipelineJson, out)
+        addOptions(job, pipelineJson, out)
+        addTriggers(job, pipelineJson, out)
+    }
+
+    static String getJenkinsfileFromGitHubUsingDslJobDefinition(job, out) {
+        def rootNode = new XmlParser().parseText(job.xml)
+        String scriptPathStr = rootNode.definition.scriptPath.text()
+        String gitHubUrlStr = rootNode.definition.scm[0].userRemoteConfigs[0]."hudson.plugins.git.UserRemoteConfig".url.text()
+        String credentialsId = rootNode.definition.scm[0].userRemoteConfigs[0]."hudson.plugins.git.UserRemoteConfig".credentialsId.text()
+        String branchStr = rootNode.definition.scm[0].branches[0]."hudson.plugins.git.BranchSpec".name.text()
+        String rawUrlStr = gitHubUrlStr.replace('github.com', 'raw.githubusercontent.com').replaceAll('\\.git$', '')
+        String url = "${rawUrlStr}/${branchStr}/${scriptPathStr}"
+        String token = credentialsId ? getUsernamePasswordOrSecretCredential(credentialsId)[0] : ''
+        return getJenkinsfileFromGitHub(url, credentialsId)
+    }
+
+    static String getJenkinsfileFromGitHub(url, token = '') {
+        url = token ? "${url}?token=${token}" : url
+        if (!gitHubJenkinsfiles.get(url)) {
+            gitHubJenkinsfiles.put(url, new URL(url).getText())
+        }
+        return gitHubJenkinsfiles.get(url)
+    }
+
     static String getJenkinsfileFromGitHub(org, repo, branchStr, scriptPathStr, token = '') {
         def url = "https://raw.githubusercontent.com/${org}/${repo}/${branchStr}/${scriptPathStr}"
-        url = token ? "${url}?token=${token}" : url
-        return new URL(url).getText()
+        return getJenkinsfileFromGitHub(url, token)
     }
 
     static def getJenkinsfileJsonObject(jenkinsUrl, jenkinsCreds, jenkinsfileStr, out) {
-        // get the JSON
-        String urlText = ''
-        def jenkinsPipelineJson
-        try {
-            String basicAuth = "Basic " + new String(Base64.getEncoder().encode("${jenkinsCreds}".getBytes()));
-            urlText = getResponse("${jenkinsUrl}/pipeline-model-converter/toJson", "jenkinsfile=${jenkinsfileStr}", "${basicAuth}", 'application/x-www-form-urlencoded')
-        } catch (Exception e) {
-            out.println "There was a problem fetching the json. ${e.message}"
-            throw e
+        if (!jenkinsfilesJSONs.get(jenkinsfileStr)) {
+            jenkinsfilesJSONs.put(jenkinsfileStr, getJenkinsfileJsonObjectFromJenkins(jenkinsUrl, jenkinsCreds, jenkinsfileStr, out))
         }
-        // validate JSON
-        try {
-            jenkinsPipelineJson = new JsonSlurper().parseText(urlText)
-            // validate the response
-            if (jenkinsPipelineJson.status != 'ok' || jenkinsPipelineJson.data.result != 'success') {
-                out.println "START\n${jenkinsPipelineJson.toString()}\nEND"
-                out.println JsonOutput.prettyPrint("${urlText}")
-                throw new Exception("Pipeline parsing error. See: the response above.")
+        return jenkinsfilesJSONs.get(jenkinsfileStr)
+    }
+
+    static def getJenkinsfileJsonObjectFromJenkins(jenkinsUrl, jenkinsCreds, jenkinsfileStr, out) {
+        if (!jenkinsfilesJSONs.get(jenkinsfileStr)) {
+            // get the JSON
+            String urlText = ''
+            def jenkinsPipelineJson
+            try {
+                String basicAuth = "Basic " + new String(Base64.getEncoder().encode("${jenkinsCreds}".getBytes()));
+                urlText = getResponse("${jenkinsUrl}/pipeline-model-converter/toJson", "jenkinsfile=${jenkinsfileStr}", "${basicAuth}", 'application/x-www-form-urlencoded')
+            } catch (Exception e) {
+                out.println "There was a problem fetching the json. ${e.message}"
+                throw e
             }
-        } catch (Exception e) {
-            out.println "There is a problem with the returned Jenkinsfile JSON object:"
-            out.println "-".multiply(80)
-            out.println "Jenkinsfile sent:"
-            out.println "$jenkinsfileStr"
-            out.println "-".multiply(80)
-            out.println "Response from Jenkins:"
-            out.println urlText
-            throw e
+            // validate JSON
+            try {
+                jenkinsPipelineJson = new JsonSlurper().parseText(urlText)
+                // validate the response
+                if (jenkinsPipelineJson.status != 'ok' || jenkinsPipelineJson.data.result != 'success') {
+                    out.println "START\n${jenkinsPipelineJson.toString()}\nEND"
+                    out.println JsonOutput.prettyPrint("${urlText}")
+                    throw new Exception("Pipeline parsing error. See: the response above.")
+                }
+            } catch (Exception e) {
+                out.println "There is a problem with the returned Jenkinsfile JSON object:"
+                out.println "-".multiply(80)
+                out.println "Jenkinsfile sent:"
+                out.println "$jenkinsfileStr"
+                out.println "-".multiply(80)
+                out.println "Response from Jenkins:"
+                out.println urlText
+                throw e
+            }
+            jenkinsfilesJSONs.put(jenkinsfileStr, jenkinsPipelineJson.data.json)
         }
-        return jenkinsPipelineJson.data.json
+        return jenkinsfilesJSONs.get(jenkinsfileStr)
     }
 
     static def generateJobFromScratch(dslFactory, jobName, org, repo, branchStr, credentialsId, scriptPathStr, displayName, description, githubToken, jenkinsUrl, jenkinsCreds) {

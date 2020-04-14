@@ -5,16 +5,11 @@ pipeline {
         skipStagesAfterUnstable()
         timeout(time: 1, unit: 'HOURS')
     }
-    agent {
-        kubernetes {
-            label 'jenkins-jx-base'
-            defaultContainer 'jx-base'
-        }
-    }
+    agent any
     stages {
         stage('Run DSL') {
             environment {
-                UTIL_SCRIPT_URL = 'https://raw.githubusercontent.com/sboardwell/job-dsl-generator/master/src/JobDslGenUtil.groovy'
+                UTIL_SCRIPT_URL = 'https://raw.githubusercontent.com/sboardwell/job-dsl-generator/latest/src/JobDslGenUtil.groovy'
                 JENKINS_CREDS = credentials('jenkins-creds')
                 GITHUB_CREDS = credentials('github-creds')
             }

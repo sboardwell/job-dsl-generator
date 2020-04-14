@@ -16,8 +16,8 @@ JobDslGenUtil.generateJobFromScratch(
     branch, 
     credentialsId, 
     scriptPath, 
-    'Project B', 
-    'Description of project Bee!', 
+    "${jobName} Fancy Display", 
+    "Description of project B (${jobName})!", 
     "${GITHUB_TOKEN ?: ''}", 
     JENKINS_URL, 
     JENKINS_CREDS
