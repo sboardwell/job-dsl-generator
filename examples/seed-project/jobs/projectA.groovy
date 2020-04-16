@@ -7,7 +7,7 @@ String credentialsId = 'jx-pipeline-git-github-github'
 
 Class JobDslGenUtil = new GroovyClassLoader(Thread.currentThread().getContextClassLoader()).parseClass(new URL("${UTIL_SCRIPT_URL}${binding.hasVariable('UTIL_SCRIPT_TOKEN') ? "?token=${binding.getVariable('UTIL_SCRIPT_TOKEN')}" : ''}").text);
 
-String jenkinsFile = JobDslGenUtil.getJenkinsfileFromGitHub(org, repo, branch, scriptPath, "${GITHUB_TOKEN ?: ''}")
+String jenkinsFile = JobDslGenUtil.getJenkinsfileFromGitHub(out, org, repo, branch, scriptPath, "${GITHUB_TOKEN ?: ''}")
 println "${jenkinsFile}"
 
 def pipelineJson = JobDslGenUtil.getJenkinsfileJsonObject(JENKINS_URL, JENKINS_CREDS, jenkinsFile, out)

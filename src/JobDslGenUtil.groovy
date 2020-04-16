@@ -5,7 +5,7 @@ import groovy.json.JsonOutput
 class JobDslGenUtil {
 
     static void main(String[] args) {
-        //println getJenkinsfileFromGitHub('https://raw.githubusercontent.com/sboardwell/job-dsl-generator/latest/examples/seed-project/Jenkinsfile', '')
+        // println getJenkinsfileFromGitHub('https://raw.githubusercontent.com/sboardwell/job-dsl-generator/latest/examples/seed-project/Jenkinsfile', System.out, '')
     }
 
     /*
@@ -52,37 +52,37 @@ class JobDslGenUtil {
         if (http.responseCode == 200) {
             return http.inputStream.getText("UTF-8")
         } else {
-            return http.errorStream.getText("UTF-8")
+            throw new Exception(http.errorStream.getText("UTF-8"))
         }
     }
 
-    static String addParametersUsingDslJobDefinition(job, jenkinsUrl, jenkinsCreds, out) {
-        String jenkinsfileStr = getJenkinsfileFromGitHubUsingDslJobDefinition(job, out)
+    static String addParametersUsingDslJobDefinition(job, jenkinsUrl, jenkinsCreds, out, githubCreds = '') {
+        String jenkinsfileStr = getJenkinsfileFromGitHubUsingDslJobDefinition(job, out, githubCreds)
         def pipelineJson = getJenkinsfileJsonObjectFromJenkins(jenkinsUrl, jenkinsCreds, jenkinsfileStr, out)
         addParameters(job, pipelineJson, out)
     }
 
-    static String addOptionsUsingDslJobDefinition(job, jenkinsUrl, jenkinsCreds, out) {
-        String jenkinsfileStr = getJenkinsfileFromGitHubUsingDslJobDefinition(job, out)
+    static String addOptionsUsingDslJobDefinition(job, jenkinsUrl, jenkinsCreds, out, githubCreds = '') {
+        String jenkinsfileStr = getJenkinsfileFromGitHubUsingDslJobDefinition(job, out, githubCreds)
         def pipelineJson = getJenkinsfileJsonObjectFromJenkins(jenkinsUrl, jenkinsCreds, jenkinsfileStr, out)
         addOptions(job, pipelineJson, out)
     }
 
-    static String addTriggersUsingDslJobDefinition(job, jenkinsUrl, jenkinsCreds, out) {
-        String jenkinsfileStr = getJenkinsfileFromGitHubUsingDslJobDefinition(job, out)
+    static String addTriggersUsingDslJobDefinition(job, jenkinsUrl, jenkinsCreds, out, githubCreds = '') {
+        String jenkinsfileStr = getJenkinsfileFromGitHubUsingDslJobDefinition(job, out, githubCreds)
         def pipelineJson = getJenkinsfileJsonObjectFromJenkins(jenkinsUrl, jenkinsCreds, jenkinsfileStr, out)
         addTriggers(job, pipelineJson, out)
     }
 
-    static String addExtrasUsingDslJobDefinition(job, jenkinsUrl, jenkinsCreds, out) {
-        String jenkinsfileStr = getJenkinsfileFromGitHubUsingDslJobDefinition(job, out)
+    static String addExtrasUsingDslJobDefinition(job, jenkinsUrl, jenkinsCreds, out, githubCreds = '') {
+        String jenkinsfileStr = getJenkinsfileFromGitHubUsingDslJobDefinition(job, out, githubCreds)
         def pipelineJson = getJenkinsfileJsonObjectFromJenkins(jenkinsUrl, jenkinsCreds, jenkinsfileStr, out)
         addParameters(job, pipelineJson, out)
         addOptions(job, pipelineJson, out)
         addTriggers(job, pipelineJson, out)
     }
 
-    static String getJenkinsfileFromGitHubUsingDslJobDefinition(job, out) {
+    static String getJenkinsfileFromGitHubUsingDslJobDefinition(job, out, githubCreds) {
         def rootNode = new XmlParser().parseText(job.xml)
         String scriptPathStr = rootNode.definition.scriptPath.text()
         String gitHubUrlStr = rootNode.definition.scm[0].userRemoteConfigs[0]."hudson.plugins.git.UserRemoteConfig".url.text()
@@ -90,21 +90,31 @@ class JobDslGenUtil {
         String branchStr = rootNode.definition.scm[0].branches[0]."hudson.plugins.git.BranchSpec".name.text()
         String rawUrlStr = gitHubUrlStr.replace('github.com', 'raw.githubusercontent.com').replaceAll('\\.git$', '')
         String url = "${rawUrlStr}/${branchStr}/${scriptPathStr}"
-        String token = credentialsId ? getUsernamePasswordOrSecretCredential(credentialsId)[0] : ''
-        return getJenkinsfileFromGitHub(url, credentialsId)
+        String token = githubCreds ?: credentialsId ? getUsernamePasswordOrSecretCredential(credentialsId)[0] : ''
+        return getJenkinsfileFromGitHub(url, out, token)
     }
 
-    static String getJenkinsfileFromGitHub(url, token = '') {
-        url = token ? "${url}?token=${token}" : url
-        if (!gitHubJenkinsfiles.get(url)) {
-            gitHubJenkinsfiles.put(url, new URL(url).getText())
+    static String getJenkinsfileFromGitHub(url, out, token = '') {
+        out.println "Looking for url '${url}' with token '${token.take(5)}${token ? '...' : ''}'"
+        def http = new URL(url).openConnection() as HttpURLConnection
+        http.setRequestMethod("GET")
+        http.setDoOutput(true)
+        http.setRequestProperty("Cache-Control", "no-store")
+        http.setRequestProperty("Content-Type", 'text/plain')
+        if (token) {
+            http.setRequestProperty("Authorization", "token ${token}")
         }
-        return gitHubJenkinsfiles.get(url)
+        http.connect()
+        if (http.responseCode == 200) {
+            return http.inputStream.getText("UTF-8")
+        } else {
+            throw new Exception(http.errorStream.getText("UTF-8"))
+        }
     }
 
-    static String getJenkinsfileFromGitHub(org, repo, branchStr, scriptPathStr, token = '') {
+    static String getJenkinsfileFromGitHub(out, org, repo, branchStr, scriptPathStr, token = '') {
         def url = "https://raw.githubusercontent.com/${org}/${repo}/${branchStr}/${scriptPathStr}"
-        return getJenkinsfileFromGitHub(url, token)
+        return getJenkinsfileFromGitHub(url, out, token)
     }
 
     static def getJenkinsfileJsonObject(jenkinsUrl, jenkinsCreds, jenkinsfileStr, out) {
@@ -121,7 +131,7 @@ class JobDslGenUtil {
             def jenkinsPipelineJson
             try {
                 String basicAuth = "Basic " + new String(Base64.getEncoder().encode("${jenkinsCreds}".getBytes()));
-                urlText = getResponse("${jenkinsUrl}/pipeline-model-converter/toJson", "jenkinsfile=${jenkinsfileStr}", "${basicAuth}", 'application/x-www-form-urlencoded')
+                urlText = getResponse("${jenkinsUrl}/pipeline-model-converter/toJson", "jenkinsfile=${java.net.URLEncoder.encode(jenkinsfileStr, "UTF-8")}", "${basicAuth}", 'application/x-www-form-urlencoded')
             } catch (Exception e) {
                 out.println "There was a problem fetching the json. ${e.message}"
                 throw e
@@ -152,7 +162,7 @@ class JobDslGenUtil {
 
     static def generateJobFromScratch(dslFactory, jobName, org, repo, branchStr, credentialsId, scriptPathStr, displayName, description, githubToken, jenkinsUrl, jenkinsCreds) {
         dslFactory.out.println "Generating pipeline job from scratch for '${jobName}'"
-        String jenkinsfileStr = getJenkinsfileFromGitHub(org, repo, branchStr, scriptPathStr, githubToken)
+        String jenkinsfileStr = getJenkinsfileFromGitHub(dslFactory.out, org, repo, branchStr, scriptPathStr, githubToken)
         def pipelineJson = getJenkinsfileJsonObject(jenkinsUrl, jenkinsCreds, jenkinsfileStr, dslFactory.out)
         generateJobFull(dslFactory, jobName, org, repo, branchStr, credentialsId, scriptPathStr, displayName, description, pipelineJson, dslFactory.out)
     }
@@ -208,7 +218,7 @@ class JobDslGenUtil {
             if (jobTriggers) {
                 job.with {
                     triggers {
-                        triggersDelegate = delegate
+                        def triggersDelegate = delegate
                         jobTriggers.each {
                             // currently only supporting literals
                             if (it.arguments[0].isLiteral) {
@@ -227,7 +237,7 @@ class JobDslGenUtil {
                                         }
                                         break
                                     default:
-                                        throw new Exception("Unhandled triggerType option.")
+                                        throw new Exception("Unhandled triggerType '${triggerType}'.")
                                 }
                             }
                         }
@@ -248,6 +258,7 @@ class JobDslGenUtil {
             def jobParameters = pipelineJson.pipeline.parameters?.parameters
             if (jobParameters) {
                 job.with {
+                    def jobDelegate = delegate
                     parameters {
                         def parametersDelegate = delegate
                         jobParameters.each { paramObj ->
@@ -277,11 +288,14 @@ class JobDslGenUtil {
                                 case ~/choice/:
                                     addChoiceParam(parametersDelegate, argMap)
                                     break
+                                case ~/extendedChoice/:
+                                    addExtendedChoiceParam(jobDelegate, argMap)
+                                    break
                                 case ~/text/:
                                     addTextParam(parametersDelegate, argMap)
                                     break
                                 default:
-                                    throw new Exception("Unhandled paramType option.")
+                                    throw new Exception("Unhandled paramType '${paramType}'.")
                             }
                         }
                     }
@@ -321,6 +335,9 @@ class JobDslGenUtil {
                                 case ~/timeout/:
                                     output << "Ignoring pipeline only '${optionType}"
                                     break
+                                case ~/ansiColor/:
+                                    output << "Ignoring pipeline only '${optionType}"
+                                    break
                                 case ~/buildDiscarder/:
                                     if (optionObj.arguments) {
                                         // currently only supporting the logRotator method
@@ -351,7 +368,7 @@ class JobDslGenUtil {
                                     }
                                     break
                                 default:
-                                    throw new Exception("Unhandled optionType '${optionType}.")
+                                    throw new Exception("Unhandled optionType '${optionType}'.")
                             }
                         }
                     }
@@ -372,6 +389,17 @@ class JobDslGenUtil {
             argMap.choices = argMap.choices.split('\n') as List<String>
         }
         delegate.choiceParam(argMap.name, argMap.choices, argMap.description)
+    }
+
+    private static addExtendedChoiceParam(def jobDelegate, def argMap) {
+        // special case for extended choice
+        jobDelegate.configure { project->
+            project / 'properties' / 'hudson.model.ParametersDefinitionProperty' / parameterDefinitions << 'com.cwctravel.hudson.plugins.extended__choice__parameter.ExtendedChoiceParameterDefinition' {
+                argMap.each { k, v ->
+                    delegate.k(v)
+                }
+            }
+        }
     }
 
     private static addTextParam(def delegate, def argMap) {
