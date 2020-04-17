@@ -30,9 +30,9 @@ class JobDslGenUtil {
         def ret = []
         creds.each { provider ->
             def cred = provider.credentials.findResult { it.id == credentialsId ? it : null }
-            if (cred.class.name == 'com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl')
+            if (cred?.class.name == 'com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl')
                 ret = [ cred.password, cred.username ]
-            else if (cred.class.name == 'org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl') {
+            else if (cred?.class.name == 'org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl') {
                 ret = [ cred.secret ]
             }
         }
