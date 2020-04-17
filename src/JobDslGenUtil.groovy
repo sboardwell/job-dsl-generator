@@ -95,7 +95,7 @@ class JobDslGenUtil {
     }
 
     static String getJenkinsfileFromGitHub(url, out, token = '') {
-        out.println "Looking for url '${url}' with token '${token.take(5)}${token ? '...' : ''}'"
+        out.println "Looking for url '${url}' with token '${token?.take(5)}${token ? '...' : ''}'"
         def http = new URL(url).openConnection() as HttpURLConnection
         http.setRequestMethod("GET")
         http.setDoOutput(true)
