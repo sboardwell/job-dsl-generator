@@ -30,11 +30,15 @@ class JobDslGenUtil {
         def creds = jenkins.model.Jenkins.instanceOrNull?.getExtensionList('com.cloudbees.plugins.credentials.SystemCredentialsProvider')
         def ret = []
         creds.each { provider ->
-            out.println "Checking credentials provider '$provider'"
+            out.println "    Checking credentials provider '$provider'"
             def cred = provider.credentials.findResult { it.id == credentialsId ? it : null }
             if (cred?.class?.name == 'com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl')
+                out.println "    Checking credentials provider 'UsernamePasswordCredentialsImpl'"
+                out.println "    Lengths ${cred.password?.size()} : ${cred.username?.size()}" 
                 ret = [ cred.password, cred.username ]
             else if (cred?.class?.name == 'org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl') {
+                out.println "    Checking credentials provider 'StringCredentialsImpl'"
+                out.println "    Lengths ${cred.secret?.size()}" 
                 ret = [ cred.secret ]
             }
         }
