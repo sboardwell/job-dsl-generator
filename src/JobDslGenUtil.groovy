@@ -25,10 +25,12 @@ class JobDslGenUtil {
         }
     }
 
-    static def getUsernamePasswordOrSecretCredential(def credentialsId) {
+    static def getUsernamePasswordOrSecretCredential(def credentialsId, def out) {
+        out.println "Looking for credentialsId '$credentialsId'"
         def creds = jenkins.model.Jenkins.instanceOrNull?.getExtensionList('com.cloudbees.plugins.credentials.SystemCredentialsProvider')
         def ret = []
         creds.each { provider ->
+            out.println "Checking credentials provider '$provider'"
             def cred = provider.credentials.findResult { it.id == credentialsId ? it : null }
             if (cred?.class?.name == 'com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl')
                 ret = [ cred.password, cred.username ]
@@ -90,7 +92,7 @@ class JobDslGenUtil {
         String branchStr = rootNode.definition.scm[0].branches[0]."hudson.plugins.git.BranchSpec".name.text()
         String rawUrlStr = gitHubUrlStr.replace('github.com', 'raw.githubusercontent.com').replaceAll('\\.git$', '')
         String url = "${rawUrlStr}/${branchStr}/${scriptPathStr}"
-        String token = githubCreds ?: credentialsId ? getUsernamePasswordOrSecretCredential(credentialsId)[0] : ''
+        String token = githubCreds ?: credentialsId ? getUsernamePasswordOrSecretCredential(credentialsId, out)[0] : ''
         return getJenkinsfileFromGitHub(url, out, token)
     }
 
