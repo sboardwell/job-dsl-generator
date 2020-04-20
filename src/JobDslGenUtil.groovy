@@ -278,10 +278,15 @@ class JobDslGenUtil {
                                 // currently only supporting literals
                                 // if non-literal values found set to blank string to be corrected on first build run 
                                 def valueToSet = ''
-                                if (isLiteral)  {
+                                if (arg.value.name) {
+                                    output << "    Method call found - not handling: ---------> $argKey : ${arg.value}"
+                                } else if (isLiteral) {
                                     valueToSet = arg.value.value
+                                    output << "    Use literal: ${isLiteral} ---------> $argKey : ${valueToSet}"
+                                } else {
+                                    valueToSet = toGroovy(arg.value.value)
+                                    output << "    Use literal: ${isLiteral} ---------> $argKey : ${valueToSet}"
                                 }
-                                output << "    Use literal: ${isLiteral} ---------> $argKey : ${valueToSet}"
                                 argMap."$argKey" = valueToSet
                             }
                             switch (paramType) {
@@ -295,7 +300,7 @@ class JobDslGenUtil {
                                     addChoiceParam(parametersDelegate, argMap)
                                     break
                                 case ~/extendedChoice/:
-                                    addExtendedChoiceParam(jobDelegate, argMap)
+                                    addExtendedChoiceParam(parametersDelegate, argMap)
                                     break
                                 case ~/text/:
                                     addTextParam(parametersDelegate, argMap)
@@ -309,6 +314,19 @@ class JobDslGenUtil {
             }
         } finally {
             printOutput(output, out)
+        }
+    }
+
+    /*
+     * Taken from:
+     * https://github.com/jenkinsci/pipeline-model-definition-plugin/blob/23540e24d7ca201404a8762e3701e6f34b407920/pipeline-model-definition/src/main/groovy/org/jenkinsci/plugins/pipeline/modeldefinition/parser/JSONParser.groovy#L620-L648
+     * https://github.com/jenkinsci/pipeline-model-definition-plugin/blob/23540e24d7ca201404a8762e3701e6f34b407920/pipeline-model-api/src/main/java/org/jenkinsci/plugins/pipeline/modeldefinition/ast/ModelASTValue.java#L164-L171
+     */
+    static private toGroovy(String gstring) {
+        if (gstring.startsWith('${') && gstring.endsWith('}')) {
+            return Eval.me(gstring.substring(2, gstring.length() - 1))
+        } else {
+            return Eval.me(gstring);
         }
     }
 
@@ -397,12 +415,24 @@ class JobDslGenUtil {
         delegate.choiceParam(argMap.name, argMap.choices, argMap.description)
     }
 
-    private static addExtendedChoiceParam(def jobDelegate, def argMap) {
+    private static addExtendedChoiceParam(def paramsDelegate, def argMap) {
         // special case for extended choice
-        jobDelegate.configure { project->
-            project / 'properties' / 'hudson.model.ParametersDefinitionProperty' / parameterDefinitions << 'com.cwctravel.hudson.plugins.extended__choice__parameter.ExtendedChoiceParameterDefinition' {
-                argMap.each { k, v ->
-                    delegate.k(v)
+        def options = [
+            'bindings', 'defaultBindings', 'defaultGroovyClasspath', 'defaultGroovyScript', 'defaultGroovyScriptFile',
+            'defaultPropertyFile', 'defaultPropertyKey', 'defaultValue', 'description', 'descriptionBindings',
+            'descriptionGroovyClasspath', 'descriptionGroovyScript', 'descriptionGroovyScriptFile',
+            'descriptionPropertyFile', 'descriptionPropertyKey', 'descriptionPropertyValue', 'groovyClasspath',
+            'groovyScript', 'groovyScriptFile', 'javascript', 'javascriptFile', 'multiSelectDelimiter', 'name',
+            'projectName', 'propertyFile', 'propertyKey', 'quoteValue', 'saveJSONParameterToFile', 'type',
+            'value', 'visibleItemCount'
+        ]
+        paramsDelegate.extendedChoice {
+            def extendedChoiceDelegate = delegate
+            options.each { key ->
+                if (argMap.containsKey(key)) {
+                    extendedChoiceDelegate."$key"(argMap."$key")
+                } else {
+                    extendedChoiceDelegate."$key"(null)
                 }
             }
         }
